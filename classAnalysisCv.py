@@ -11,7 +11,7 @@ else:
     iz=10
 
 import pickle
-[z1L,zKuL,zKaL,addInfoL]=pickle.load(open('stProfs%2.2i.pklz'%iz,'rb'))
+[z1L,zKuL,zKaL,addInfoL]=pickle.load(open('cvProfs%2.2i.pklz'%iz,'rb'))
 n=len(zKuL)
 zeta1L=[]
 zeta2L=[]
@@ -124,6 +124,6 @@ for i in range(16):
 
 
 plt.tight_layout()
-plt.savefig("stClasses%2.2i.png"%iz)
+plt.savefig("cvClasses%2.2i.png"%iz)
 print(np.corrcoef(rEst.T,addInfoL[:,-6:-4].T))
-pickle.dump([zmL,kgainL,xL,kmeans,ic],open("kFilterStClasses%2.2i.pklz"%iz,"wb"))
+pickle.dump([zmL,kgainL,xL,kmeans,ic],open("kFilterCvClasses%2.2i.pklz"%iz,"wb"))
