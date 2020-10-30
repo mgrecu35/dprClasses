@@ -74,6 +74,8 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
     dns=zeros(176)
     zKaSim=zeros(176)
     dZKa=zeros(176)
+    eps=exp(np.random.randn()*0.5)
+    #eps=1.0
     for it=1:2
         piaKu=0.0
         piaKa=0.0
@@ -112,7 +114,7 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
             end
             zKuSim[k+1,:].=zKuC[k+1]
         end
-        println("$(it)=",np.mean(dZKa[btop+1:bzd]), " $(rrate1d[bzd]) $(dns[bzd]) $(dZKa[bzd])")
+        #println("$(it)=",np.mean(dZKa[btop+1:bzd]), " $(rrate1d[bzd]) $(dns[bzd]) $(dZKa[bzd])")
         dnbzd=dns[bzd]
         if it==1
             dns[btop+1:bzd].=dns[btop+1:bzd].-0.6*(dZKa[btop+1:bzd])
@@ -120,7 +122,7 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
             dns[dns.<-1].=-1
         end
         rate0=rrate1d[bzd]
-        rv=0#np.random.randn()
+        rv=0.95*np.random.randn()
         rv2=0
         piaKuV.=piaKu
         if ifull==1
@@ -143,16 +145,16 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
                 end
             end
         else
+            attKuSim=zeros(4)
             for k=bzd:bcf
-                rv=0.75*rv+0.25*np.random.randn()
+                rv=0.5*rv+0.5*np.random.randn()
                 rv2=0.75*rv2+0.25*np.random.randn()
                 dn=dnbzd+rv2
                 rate0=rate0#*exp(0.5*rv)
-                rrate1d[k+1]=rate0*exp(0.5*rv)
+                rrate1d[k+1]=rate0*exp(0.75*rv)
                 #R=1.370*eps^4.258*dm^5.420
-
                 for isim=1:4
-                    dm=(vf[isim]*rrate1d[k+1])^(1/5.420)
+                    dm=(vf[isim]*rrate1d[k+1]/1.37/eps^4.25)^(1/5.420)
                     n1,n2=bisection(dmJ,dm)
                     dn=log10(rrateJ[n1]/(vf[isim]*rrate1d[k+1]))
                     n1,n2=bisection(rrateJ,vf[isim]*rrate1d[k+1]/10^dn)
@@ -161,9 +163,111 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
                     piaKuV[isim]+=attKu*dr
                     zKuSim[k+1,isim]=zKuJ[n1]-piaKuV[isim]+10*dn
                     piaKuV[isim]+=attKu*dr
+                    attKuSim[isim]=attKu
                 end
             end
+            for isim=1:4
+                piaKuV[isim]+=attKuSim[isim]*dr*(bsfc-bcf)*2
+            end
         end
+    end
+
+    w=w./sum(w)
+    extMean=np.sum(w.*10 .^(-0.1*piaKuV))
+    piaKu=-10*log10(extMean)
+    nubf=piaKu/np.mean(piaKuV)
+    zKuSim1=zeros(176)
+    for isim=1:4
+        zKuSim1=zKuSim1.+w[isim]*10 .^(0.1*zKuSim[:,isim])
+    end
+    zKuSim1=10*log10.(zKuSim1)
+    return  dm1d, dn1d,piaKu, rrate1d,zKuC,piaKu,zKuSim1,log(eps)
+end
+
+function iter_profR(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,rrate1d,pia,eps,newTables,ifull)
+    zKuJ,attKuJ,pwcJ,rrateJ,dmJ,zKuBBJ,attKuBBJ,pwcBBJ,rrateBBJ,dmBBJ,
+    zKuSJ,attKuSJ,pwcSJ,rrateSJ,dmSJ,nbinsj,
+    zKaJ,attKaJ,zKaBBJ,attKaBBJ,zKaSJ,attKaSJ,dNw,dNwBB,dNwSJ,
+    zKuHJ,attKuHJ,pwcHJ,rrateHJ,dmHJ,
+    zKaHJ,attKaHJ,pwcHJ2,rrateHJ2,dmHJ2=newTables
+    piaB=pia
+    dm1d=zeros(176)
+    dn1d=zeros(176)
+    piaKu=0
+    zKuC=copy(zKuL[indx[i]])
+    zKuSim=zeros(176,4)
+    piaKuV=zeros(4)
+    vf=[2.,1,0.8,0.7]
+    w=[1,1,2,2]
+    dns=zeros(176)
+    zKaSim=zeros(176)
+    dZKa=zeros(176)
+    attKuSim=zeros(4)
+
+    for it=1:2
+        piaKu=0.0
+        piaKa=0.0
+        for k=btop:bzd-1
+            if zKuC[k+1]>10
+                ztrue=zKuC[k+1]
+                dm=(0.00113070*ztrue^2+0.0047*ztrue+0.4911)
+                if dm>3.0
+                    dm=3.0
+                end
+                if ztrue<40
+                    ztrueS=ztrue
+                    ztrueH=0.0
+                else
+                    ztrueS=40
+                    ztrueH=10*log10(10^(0.1*ztrue)-10^(0.1*39.999))
+                end
+                n1,n2=bisection(zKuSJ,ztrueS-10*dns[k+1])
+                attKuS=attKuSJ[n1]*10^dns[k+1]
+                attKaS=attKuSJ[n1]*10^dns[k+1]
+                n1H,n2H=bisection(zKuHJ,ztrueH)
+                attKuH=attKuHJ[n1H]
+                attKaH=attKaHJ[n1H]
+                piaKu+=(attKuS+attKuH)*dr
+                piaKa+=(attKaS+attKaH)*dr
+                zKuC[k+1]=zKuL[indx[i]][k+1]+piaKu
+                zKaSim[k+1]=10*log10(10^(0.1*zKaSJ[n1]+dns[k+1])+10^(0.1*zKaHJ[n1H]))-piaKa
+                if(zKaL[indx[i]][k+1]>10)
+                    dZKa[k+1]=zKaSim[k+1]-zKaL[indx[i]][k+1]
+                end
+                piaKu+=(attKuS+attKuH)*dr
+                piaKa+=(attKaS+attKaH)*dr
+                dm1d[k+1]=0.5*(dmSJ[n1]+dmHJ[n1H])
+                dn1d[k+1]=0.0
+                rrate1d[k+1]=rrateSJ[n1]*10^dns[k+1]+rrateHJ[n1H]
+            end
+            zKuSim[k+1,:].=zKuC[k+1]
+        end
+        #println("$(it)=",np.mean(dZKa[btop+1:bzd]), " $(rrate1d[bzd]) $(dns[bzd]) $(dZKa[bzd])")
+        dnbzd=dns[bzd]
+        if it==1
+            dns[btop+1:bzd].=dns[btop+1:bzd].-0.6*(dZKa[btop+1:bzd])
+            dns[dns.>1].=1
+            dns[dns.<-1].=-1
+        end
+        piaKuV.=piaKu
+        for k=bzd:bcf
+            for isim=1:4
+                dm=(vf[isim]*rrate1d[k+1]/1.37/eps^4.25)^(1/5.420)
+                n1,n2=bisection(dmJ,dm)
+                dn=log10(rrateJ[n1]/(vf[isim]*rrate1d[k+1]))
+                n1,n2=bisection(rrateJ,vf[isim]*rrate1d[k+1]/10^dn)
+                attKu=attKuJ[n1]*10^dn
+                dm1d[k+1]=dmJ[n1]
+                piaKuV[isim]+=attKu*dr
+                zKuSim[k+1,isim]=zKuJ[n1]-piaKuV[isim]+10*dn
+                piaKuV[isim]+=attKu*dr
+                attKuSim[isim]=attKu
+            end
+        end
+        for isim=1:4
+            piaKuV[isim]+=attKuSim[isim]*dr*(bsfc-bcf)*2
+        end
+
     end
     w=w./sum(w)
     extMean=np.sum(w.*10 .^(-0.1*piaKuV))
@@ -174,7 +278,6 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
         zKuSim1=zKuSim1.+w[isim]*10 .^(0.1*zKuSim[:,isim])
     end
     zKuSim1=10*log10.(zKuSim1)
-    #println(nubf,piaKuV,vf,w)
     return  dm1d, dn1d,piaKu, rrate1d,zKuC,piaKu,zKuSim1
 end
 
@@ -207,7 +310,7 @@ function hb_cv(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dnv,dr,newTables)
         z13obs[nodes[5]+1]=0
     end
     piamax=maximum(z13obs[nodes[1]+1:nodes[5]+1])+3-z13obs[nodes[5]+1]
-    println(piamax)
+    #println(piamax)
     zetaS=0.0
     q=0.2*log(10)
     eps=1

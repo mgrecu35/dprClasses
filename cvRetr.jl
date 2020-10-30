@@ -24,7 +24,7 @@ zmL,kgainL,xL,kmeans,ic=pickle.load(fh)
 z1L[z1L.<0].=0.0;
 labels=kmeans.predict(z1L[:,1:end-1]);
 
-indx=findall(labels.==ic[end-3])
+indx=findall(labels.==ic[end])
 i=1
 
 dr=0.25
@@ -39,7 +39,12 @@ rrate1DL=[]
 piaKuL=[]
 zKuL1=[]
 zKuL2=[]
-for i=1:1200
+nMemb=50
+zKuSimEns=zeros(176,nMemb)
+rrate1DEns=zeros(176,nMemb)
+epsEns=zeros(1,nMemb)
+piaEns=zeros(1,nMemb)
+for i=1:300
     z1p=zeros(176)
     bsfc,bzd,bcf=Int.(addInfoL[indx[i],4:6])
     piaKu=0.0
@@ -52,15 +57,47 @@ for i=1:1200
     if addInfoL[indx[i],end]==1 || addInfoL[indx[i],end]==2
         pia=addInfoL[indx[i],7]
         ifull=0
-        dm1d,dnw1d,piaB,rrate1D,zKuC,piaKu,zKuSim=iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,piaMax,newTables,ifull)
+        for ien=1:nMemb
+            dm1d,dnw1d,piaB,rrate1D,zKuC,piaKu,zKuSim,eps=iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,
+            zKaL,dr,piaMax,newTables,ifull)
+            zKuSimEns[:,ien]=zKuSim
+            zKuSimEns[bcf+1,ien]=10*piaKu
+            rrate1DEns[:,ien]=rrate1D
+            epsEns[1,ien]=eps
+            piaEns[1,ien]=piaKu
+        end
+        zObs=zKuL[indx[i]][bzd+1:bcf+1]
+        zObs[end]=10*pia
+        println("$(pia) $(np.mean(piaEns))")
+        nx=bcf-bzd+1
+        covT=(np.cov(rrate1DEns[bzd+1:bcf+1,:],zKuSimEns[bzd+1:bcf+1,:]))
+        covTpia=(np.cov(epsEns[1,:],zKuSimEns[bzd+1:bcf+1,:]))
+        covXY=covT[1:nx,nx+1:end]
+        covXYpia=covTpia[1,2:end]
+        covYY=covT[nx+1:end,nx+1:end].+2*np.eye(nx)
+        covYY[end,end]=2.0
+        kgain=np.dot(covXY,np.linalg.pinv(covYY))
+        kgainPia=np.dot(covXYpia,np.linalg.pinv(covYY))
+        dZ=zObs.-np.mean(zKuSimEns[bzd+1:bcf+1,:],axis=1)
+        dZ[zObs.<0].=0
+        #dZ[end]=0
+        dR=np.dot(kgain,dZ)
+        dEps=np.dot(kgainPia,dZ)
+        rrate1D=np.mean(rrate1DEns,axis=1)
+        rrate1D[bzd+1:bcf+1].=rrate1D[bzd+1:bcf+1].+0.85*dR
+        rrate1D[rrate1D.<0.01].=0.01
+        dr=0.125
+        dm1d,dnw1d,piaB,rrate1D,zKuC,piaKu,zKuSimF=iter_profR(btop,bzd,bcf,bsfc,indx,i,zKuL,
+        zKaL,dr,rrate1D,piaMax,exp(0.85*dEps[1]),newTables,ifull)
+
         push!(dm1L,[dm1d[bcf+1],dm1d[bzd+1],addInfoL[indx[i],8]])
         push!(n1L,[dnw1d[bcf+1],dnw1d[bzd+1]])
         push!(piaBL,pia)
-        push!(rmRetL,[addInfoL[indx[i],9],rrate1D[bcf+1]])
+        push!(rmRetL,[addInfoL[indx[i],9],rrate1D[bcf]])
         push!(rrate1DL,rrate1D)
         push!(piaKuL,piaKu)
         push!(zKuL1,zKuL[indx[i]])
-        push!(zKuL2,zKuSim)
+        push!(zKuL2,zKuSimF)
     end
     #if addInfoL[indx[i],end]==1 || addInfoL[indx[i],end]==2
     #
@@ -72,18 +109,22 @@ for i=1:1200
     #end
 
 end
+i=1
 
+#plt.plot(zKuSimF)
+#plt.plot(zKuL[indx[i]])
+#plt.ylim(0,45)
 rrate1DL=np.array(rrate1DL)
-plt.pcolormesh(rrate1DL[1:200,169:-1:100]',cmap="jet")
+plt.pcolormesh(rrate1DL[1:100,169:-1:100]',cmap="jet")
 zKuL1=np.array(zKuL1)
 zKuL2=np.array(zKuL2)
 iplot=1
 if iplot==1
 plt.figure()
 plt.subplot(211)
-plt.pcolormesh(zKuL1[1:200,165:-1:100]',cmap="jet",vmax=50,vmin=0)
+plt.pcolormesh(zKuL1[1:100,165:-1:100]',cmap="jet",vmax=50,vmin=0)
 plt.colorbar()
 plt.subplot(212)
-plt.pcolormesh(zKuL2[1:200,165:-1:100]',cmap="jet",vmax=50,vmin=0)
+plt.pcolormesh(zKuL2[1:100,165:-1:100]',cmap="jet",vmax=50,vmin=0)
 plt.colorbar()
 end
