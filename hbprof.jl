@@ -76,6 +76,10 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
     dZKa=zeros(176)
     eps=exp(np.random.randn()*0.5)
     #eps=1.0
+    piaBZD=0.0
+    piaBackw=zeros(4)
+    dnsub=zeros(4,176)
+    dms=zeros(4,176)
     for it=1:2
         piaKu=0.0
         piaKa=0.0
@@ -125,6 +129,7 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
         rv=0.95*np.random.randn()
         rv2=0
         piaKuV.=piaKu
+        piaBZD=piaKu
         if ifull==1
             for k=bzd:bcf
                 if zKuC[k+1]>0
@@ -147,25 +152,29 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
         else
             attKuSim=zeros(4)
             for k=bzd:bcf
-                rv=0.5*rv+0.5*np.random.randn()
+                rv=0.75*rv+0.25*np.random.randn()
                 rv2=0.75*rv2+0.25*np.random.randn()
                 dn=dnbzd+rv2
                 rate0=rate0#*exp(0.5*rv)
                 rrate1d[k+1]=rate0*exp(0.75*rv)
                 #R=1.370*eps^4.258*dm^5.420
                 for isim=1:4
-                    dm=(vf[isim]*rrate1d[k+1]/1.37/eps^4.25)^(1/5.420)
-                    n1,n2=bisection(dmJ,dm)
-                    dn=log10(rrateJ[n1]/(vf[isim]*rrate1d[k+1]))
+                    dm=(vf[isim]*rrate1d[k+1]/1.37)^(1/5.420)
+                    n11,n21=bisection(dmJ,dm)
+                    dn=log10((vf[isim]*rrate1d[k+1]/rrateJ[n11]))
+                    dnsub[isim,k+1]=dn
                     n1,n2=bisection(rrateJ,vf[isim]*rrate1d[k+1]/10^dn)
                     attKu=attKuJ[n1]*10^dn
+                    #println("n=$(n11) $(n1)")
                     dm1d[k+1]=dmJ[n1]
+                    dms[isim,k+1]=dmJ[n1]
                     piaKuV[isim]+=attKu*dr
                     zKuSim[k+1,isim]=zKuJ[n1]-piaKuV[isim]+10*dn
                     piaKuV[isim]+=attKu*dr
                     attKuSim[isim]=attKu
                 end
             end
+            piaBackw.=piaKuV
             for isim=1:4
                 piaKuV[isim]+=attKuSim[isim]*dr*(bsfc-bcf)*2
             end
@@ -181,6 +190,72 @@ function iter_prof(btop,bzd,bcf,bsfc,indx,i,zKuL,zKaL,dr,pia,newTables,ifull)
         zKuSim1=zKuSim1.+w[isim]*10 .^(0.1*zKuSim[:,isim])
     end
     zKuSim1=10*log10.(zKuSim1)
+    dZ=zeros(176)
+    rrate1Ds=zeros(4,176)
+
+    for k=bcf:-1:bzd
+        if zKuL[indx[i]][k+1]>0
+            dZ[k+1]=zKuL[indx[i]][k+1]-zKuSim1[k+1]
+        else
+            dZ[k+1]=0
+        end
+    end
+    dZ.=0
+    ibackw=1
+    for isim=1:4
+        piaKuV[isim]=piaBZD
+    end
+    #println("***************** ", piaKuV, "$(bsfc) $(bcf)")
+    if ibackw==1
+        attKuSim=zeros(4)
+        for isim=1:4
+            for k=bcf:-1:bzd
+                dm=(vf[isim]*rrate1d[k+1]/1.37)^(1/5.420)
+                ztrue=dZ[k+1]+zKuSim[k+1,isim]+piaBackw[isim]
+                dm=dms[isim,k+1]
+                dn=dnsub[isim,k+1]
+                n1,n2=bisection(dmJ,dm)
+                attKu=attKuJ[n1]*10^dn
+                dnsub[isim,k+1]=dn
+                rrate1Ds[isim,k+1]=rrateJ[n1]*10^dn
+                #println("$(vf[isim]*rrate1d[k+1]) $(rrateJ[n1]*10^dn) ")
+                piaBackw[isim]-=2*attKu*dr
+            end
+        end
+        #println("1=",rrate1d[bzd+1:bcf+1])
+        #println(piaBZD)
+        #println("-------------- ",piaKuV, "$(bsfc) $(bcf)")
+        for k=bzd:bcf
+            rsum=0.0
+            zsum=0.0
+            for isim=1:4
+                #dm=(vf[isim]*rrate1d[k+1]/1.37/eps^4.25)^(1/5.420)
+                dm=dms[isim,k+1]
+                n1,n2=bisection(dmJ,dm)
+                dn=dnsub[isim,k+1]
+                attKu=attKuJ[n1]*10^dn
+                rsum+=w[isim]*rrateJ[n1]*10^dn
+                piaKuV[isim]+=attKu*dr
+                zKuSim[k+1,isim]=zKuJ[n1]-piaKuV[isim]+10*dn
+                piaKuV[isim]+=attKu*dr
+                attKuSim[isim]=attKu
+                zsum+=w[isim]*10^(0.1*zKuSim[k+1,isim])
+                #println("$(w[isim]) $(zKuSim[k+1,isim]) $(dn) $(piaKuV[isim]) $(n1)")
+            end
+
+            zKuSim1[k+1]=10*log10(zsum)
+            #println("$(zKuSim1[k+1])")
+            rrate1d[k+1]=rsum
+        end
+        #println("2=",rrate1d[bzd+1:bcf+1])
+        for isim=1:4
+            piaKuV[isim]+=attKuSim[isim]*dr*(bsfc-bcf)*2
+        end
+    end
+    extMean=np.sum(w.*10 .^(-0.1*piaKuV))
+    piaKu=-10*log10(extMean)
+    nubf=piaKu/np.mean(piaKuV)
+    #exit(-1)
     return  dm1d, dn1d,piaKu, rrate1d,zKuC,piaKu,zKuSim1,log(eps)
 end
 
@@ -457,3 +532,6 @@ function hb_bb(zku,zka,bcf,bst,brs,bzd,bbPeak,pType,newTables,dr,dnv)
     end
     retrate=zeros(88)
 end
+
+
+npCoeff=[0.012061996352769808,-0.2876799692273608] 
